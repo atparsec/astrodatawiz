@@ -52,7 +52,9 @@ import type {
   ChartConfig,
   ColumnFilter,
   Dataset,
+  TransformDefinition,
   TransformName,
+  TRefMode,
 } from "./types";
 
 type TabKey = "data" | "sql" | "charts" | "aggregate" | "sky";
@@ -62,7 +64,9 @@ interface TransformStep {
   datasetId: string;
   columns: string[];
   transform: TransformName;
+  referenceMode?: TRefMode;
   referenceColumn?: string;
+  referenceValue?: string;
 }
 
 interface SkySurveyOption {
@@ -84,19 +88,67 @@ const FILTER_OPERATORS: Array<{
   { value: "contains", label: "contains" },
 ];
 
-const TRANSFORMS: TransformName[] = [
-  "none",
-  "ln",
-  "log10",
-  "log2",
-  "sqrt",
-  "square",
-  "exp",
-  "inv",
-  "mag_to_int",
-  "int_to_mag",
-  "neg",
+const TRANSFORMS: TransformDefinition[] = [
+  { name: "none", label: "none", referenceNeed: "none" },
+  { name: "ln", label: "Ln", referenceNeed: "none" },
+  {
+    name: "log",
+    label: "Log (base ref)",
+    referenceNeed: "optional",
+    defaultReferenceValue: "10",
+  },
+  {
+    name: "root",
+    label: "Root (degree ref)",
+    referenceNeed: "optional",
+    defaultReferenceValue: "2",
+  },
+  { name: "square", label: "^2", referenceNeed: "none" },
+  {
+    name: "exp",
+    label: "Exp (base ref)^x",
+    referenceNeed: "optional",
+    defaultReferenceValue: String(Math.E),
+  },
+  {
+    name: "pow",
+    label: "x^(power ref)",
+    referenceNeed: "optional",
+    defaultReferenceValue: "2",
+  },
+  { name: "inv", label: "Inverse", referenceNeed: "none" },
+  {
+    name: "mag_to_int",
+    label: "Magnitude to Intensity",
+    referenceNeed: "none",
+  },
+  {
+    name: "int_to_mag",
+    label: "Intensity to Magnitude",
+    referenceNeed: "optional",
+    defaultReferenceValue: "1",
+  },
+  { name: "neg", label: "Negative", referenceNeed: "none" },
+  { name: "abs", label: "Absolute Value", referenceNeed: "none" },
+  { name: "floor", label: "Floor", referenceNeed: "none" },
+  { name: "ceil", label: "Ceil", referenceNeed: "none" },
+  {
+    name: "precision",
+    label: "Precision",
+    referenceNeed: "required",
+    defaultReferenceValue: "2",
+  },
 ];
+
+const moveReferenceColumnToEnd = (
+  columns: string[],
+  referenceMode: TRefMode,
+  referenceColumn?: string,
+): string[] => {
+  if (referenceMode !== "column" || !referenceColumn) return columns;
+  if (!columns.includes(referenceColumn)) return columns;
+  return [...columns.filter((c) => c !== referenceColumn), referenceColumn];
+};
 
 const SERIES_PALETTE = [
   "#00F5FF",
@@ -296,9 +348,12 @@ function App() {
 
   const [transformCfg, setTransformCfg] = useState<{
     transform: TransformName;
+    referenceMode: TRefMode;
     referenceColumn?: string;
+    referenceValue?: string;
   }>({
     transform: "none",
+    referenceMode: "column",
   });
   const [transformColumns, setTransformColumns] = useState<string[]>([]);
   const [transformSteps, setTransformSteps] = useState<TransformStep[]>([]);
@@ -373,6 +428,13 @@ function App() {
     [transformSteps, activeDatasetId],
   );
 
+  const selectedTransformDefinition = useMemo(
+    () =>
+      TRANSFORMS.find((t) => t.name === transformCfg.transform) ??
+      TRANSFORMS[0],
+    [transformCfg.transform],
+  );
+
   const transformedRows = useMemo(() => {
     if (!activeDataset) return [];
 
@@ -386,7 +448,9 @@ function App() {
         working = applyTransform(working, {
           column: col,
           transform: step.transform,
+          referenceMode: step.referenceMode,
           referenceColumn: step.referenceColumn,
+          referenceValue: step.referenceValue,
         });
       });
     });
@@ -679,6 +743,45 @@ function App() {
     setFilters((old) => old.filter((_, i) => i !== index));
   };
 
+  const updateTransformType = (transform: TransformName) => {
+    const selected =
+      TRANSFORMS.find((t) => t.name === transform) ?? TRANSFORMS[0];
+    const defaultReferenceValue = selected.defaultReferenceValue ?? "";
+    setTransformCfg((old) => ({
+      ...old,
+      transform,
+      ...(selected.referenceNeed === "none"
+        ? { referenceColumn: undefined, referenceValue: undefined }
+        : { referenceValue: defaultReferenceValue }),
+    }));
+  };
+
+  const updateTransformReferenceMode = (referenceMode: TRefMode) => {
+    setTransformCfg((old) => ({ ...old, referenceMode }));
+    setTransformColumns((old) =>
+      moveReferenceColumnToEnd(
+        old,
+        referenceMode,
+        transformCfg.referenceColumn,
+      ),
+    );
+  };
+
+  const updateTransformReferenceColumn = (referenceColumn: string) => {
+    setTransformCfg((old) => ({ ...old, referenceColumn }));
+    setTransformColumns((old) =>
+      moveReferenceColumnToEnd(
+        old,
+        transformCfg.referenceMode,
+        referenceColumn,
+      ),
+    );
+  };
+
+  const updateTransformReferenceValue = (referenceValue: string) => {
+    setTransformCfg((old) => ({ ...old, referenceValue }));
+  };
+
   const addTransformStep = () => {
     if (!activeDataset) return;
     if (transformCfg.transform === "none") {
@@ -690,12 +793,41 @@ function App() {
       return;
     }
 
+    const selected =
+      TRANSFORMS.find((t) => t.name === transformCfg.transform) ??
+      TRANSFORMS[0];
+    const needsReference = selected.referenceNeed !== "none";
+    const referenceMode = needsReference
+      ? transformCfg.referenceMode
+      : undefined;
+    const referenceValue =
+      transformCfg.referenceValue?.trim() ||
+      selected.defaultReferenceValue?.trim() ||
+      "";
+
+    if (selected.referenceNeed === "required") {
+      if (referenceMode === "column" && !transformCfg.referenceColumn) {
+        addError("Select a reference column for this transform.");
+        return;
+      }
+      if (referenceMode === "value" && referenceValue === "") {
+        addError("Enter a reference value for this transform.");
+        return;
+      }
+    }
+
     const step: TransformStep = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2)}`,
       datasetId: activeDataset.id,
       columns: transformColumns,
       transform: transformCfg.transform,
-      referenceColumn: transformCfg.referenceColumn,
+      referenceMode,
+      referenceColumn:
+        referenceMode === "column" ? transformCfg.referenceColumn : undefined,
+      referenceValue:
+        referenceMode === "value" && referenceValue !== ""
+          ? referenceValue
+          : undefined,
     };
 
     setTransformSteps((old) => [...old, step]);
@@ -708,10 +840,47 @@ function App() {
 
   const toggleTransformColumn = (column: string, checked: boolean) => {
     setTransformColumns((old) =>
-      checked
-        ? Array.from(new Set([...old, column]))
-        : old.filter((c) => c !== column),
+      moveReferenceColumnToEnd(
+        checked
+          ? Array.from(new Set([...old, column]))
+          : old.filter((c) => c !== column),
+        transformCfg.referenceMode,
+        transformCfg.referenceColumn,
+      ),
     );
+  };
+
+  const moveTransformColumn = (column: string, direction: "up" | "down") => {
+    setTransformColumns((old) => {
+      const idx = old.indexOf(column);
+      if (idx < 0) return old;
+
+      const target = direction === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= old.length) return old;
+
+      const reordered = [...old];
+      const [moved] = reordered.splice(idx, 1);
+      reordered.splice(target, 0, moved);
+      return reordered;
+    });
+  };
+
+  const reorderTransformColumns = (
+    dragColumn: string,
+    targetColumn: string,
+  ) => {
+    if (dragColumn === targetColumn) return;
+
+    setTransformColumns((old) => {
+      const from = old.indexOf(dragColumn);
+      const to = old.indexOf(targetColumn);
+      if (from < 0 || to < 0) return old;
+
+      const reordered = [...old];
+      const [moved] = reordered.splice(from, 1);
+      reordered.splice(to, 0, moved);
+      return reordered;
+    });
   };
 
   const reorderTransformSteps = (dragId: string, targetId: string) => {
@@ -1539,11 +1708,19 @@ function App() {
                 addFilter={addFilter}
                 removeFilter={removeFilter}
                 transforms={TRANSFORMS}
+                selectedTransformDefinition={selectedTransformDefinition}
                 transformCfg={transformCfg}
-                setTransformCfg={setTransformCfg}
+                onTransformTypeChange={updateTransformType}
+                onTransformReferenceModeChange={updateTransformReferenceMode}
+                onTransformReferenceColumnChange={
+                  updateTransformReferenceColumn
+                }
+                onTransformReferenceValueChange={updateTransformReferenceValue}
                 addTransformStep={addTransformStep}
                 transformColumns={transformColumns}
                 toggleTransformColumn={toggleTransformColumn}
+                moveTransformColumn={moveTransformColumn}
+                reorderTransformColumns={reorderTransformColumns}
                 activeTransformSteps={activeTransformSteps}
                 draggingTransformId={draggingTransformId}
                 setDraggingTransformId={setDraggingTransformId}

@@ -28,20 +28,36 @@ export interface ColumnFilter {
 export type TransformName =
   | "none"
   | "ln"
-  | "log10"
-  | "log2"
-  | "sqrt"
+  | "log"
+  | "root"
   | "square"
   | "exp"
+  | "pow"
   | "inv"
   | "mag_to_int"
   | "int_to_mag"
-  | "neg";
+  | "neg"
+  | "abs"
+  | "floor"
+  | "ceil"
+  | "precision";
+
+export type TRefReq = "none" | "optional" | "required";
+export type TRefMode = "column" | "value";
+
+export interface TransformDefinition {
+  name: TransformName;
+  label: string;
+  referenceNeed: TRefReq;
+  defaultReferenceValue?: string;
+}
 
 export interface ColumnTransform {
   column: string;
   transform: TransformName;
+  referenceMode?: TRefMode;
   referenceColumn?: string;
+  referenceValue?: string;
 }
 
 export interface AggregationResult {

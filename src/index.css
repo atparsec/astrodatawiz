@@ -318,6 +318,34 @@ textarea {
   gap: 6px;
 }
 
+.transform-builder-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-bottom: 8px;
+}
+
+.transform-step-card {
+  border: 2px solid #4f3131;
+  padding: 10px;
+  background: #000000;
+}
+
+.transform-step-card h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #ffd3d3;
+}
+
+.theme-light .transform-step-card {
+  background: #f8fafc;
+  border-color: #d5dbe4;
+}
+
+.theme-light .transform-step-card h3 {
+  color: #3b1e1e;
+}
+
 .transform-item {
   display: flex;
   align-items: center;

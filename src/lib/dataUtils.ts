@@ -302,29 +302,58 @@ const applySingleTransform = (
   switch (transform) {
     case "ln":
       return n > 0 ? Math.log(n) : Number.NaN;
-    case "log10":
-      return n > 0 ? Math.log10(n) : Number.NaN;
-    case "log2":
-      return n > 0 ? Math.log2(n) : Number.NaN;
-    case "sqrt":
-      return n >= 0 ? Math.sqrt(n) : Number.NaN;
+    case "log": {
+      const base = toNumber(referenceValue) ?? 10;
+      if (n <= 0 || base <= 0 || base === 1) return Number.NaN;
+      return Math.log(n) / Math.log(base);
+    }
+    case "root": {
+      const degree = toNumber(referenceValue) ?? 2;
+      if (!Number.isFinite(degree) || degree === 0) return Number.NaN;
+
+      if (n < 0) {
+        const isOddInteger =
+          Number.isInteger(degree) && Math.abs(degree % 2) === 1;
+        if (!isOddInteger) return Number.NaN;
+        return -((-n) ** (1 / degree));
+      }
+
+      return n ** (1 / degree);
+    }
     case "square":
       return n ** 2;
-    case "exp":
-      return Math.exp(n);
+    case "exp": {
+      const base = toNumber(referenceValue) ?? Math.E;
+      return Number.isFinite(base) ? base ** n : Number.NaN;
+    }
+    case "pow": {
+      const exponent = toNumber(referenceValue) ?? 2;
+      return n ** exponent;
+    }
     case "inv":
       return n !== 0 ? 1 / n : Number.NaN;
     case "mag_to_int":
       return 10 ** (-n / 2.5);
     case "int_to_mag": {
-      const ref = toNumber(referenceValue);
-      if (ref !== null && ref > 0) {
-        return -2.5 * Math.log10(n / ref);
-      }
-      return n > 0 ? -2.5 * Math.log10(n) : Number.NaN;
+      const ref = toNumber(referenceValue) ?? 1;
+      if (n <= 0 || ref <= 0) return Number.NaN;
+      return -2.5 * Math.log10(n / ref);
     }
     case "neg":
       return -n;
+    case "abs":
+      return Math.abs(n);
+    case "floor":
+      return Math.floor(n);
+    case "ceil":
+      return Math.ceil(n);
+    case "precision": {
+      const precision = toNumber(referenceValue) ?? 2;
+      const digits = Math.trunc(precision);
+      const factor = 10 ** digits;
+      if (!Number.isFinite(factor) || factor === 0) return value;
+      return Math.round(n * factor) / factor;
+    }
     default:
       return value;
   }
@@ -334,14 +363,19 @@ export const applyTransform = (
   dataset: Dataset,
   config: ColumnTransform,
 ): Dataset => {
-  const { column, transform, referenceColumn } = config;
+  const { column, transform, referenceColumn, referenceMode, referenceValue } =
+    config;
 
   const rows = dataset.rows.map((row) => ({
     ...row,
     [column]: applySingleTransform(
       row[column],
       transform,
-      referenceColumn ? row[referenceColumn] : undefined,
+      referenceMode === "value"
+        ? referenceValue
+        : referenceColumn
+          ? row[referenceColumn]
+          : undefined,
     ),
   }));
 

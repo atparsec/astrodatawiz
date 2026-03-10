@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import {
+  ChoiceGroup,
   DefaultButton,
   Dropdown,
   PrimaryButton,
@@ -8,13 +9,21 @@ import {
   Checkbox,
 } from "@fluentui/react";
 import type { IDropdownOption } from "@fluentui/react";
-import type { ColumnFilter, Dataset, TransformName } from "../../types";
+import type {
+  ColumnFilter,
+  Dataset,
+  TransformDefinition,
+  TransformName,
+  TRefMode,
+} from "../../types";
 
 interface TransformStepView {
   id: string;
   columns: string[];
   transform: TransformName;
+  referenceMode?: TRefMode;
   referenceColumn?: string;
+  referenceValue?: string;
 }
 
 interface DataSectionProps {
@@ -25,14 +34,23 @@ interface DataSectionProps {
   filters: ColumnFilter[];
   addFilter: () => void;
   removeFilter: (index: number) => void;
-  transforms: TransformName[];
-  transformCfg: { transform: TransformName; referenceColumn?: string };
-  setTransformCfg: Dispatch<
-    SetStateAction<{ transform: TransformName; referenceColumn?: string }>
-  >;
+  transforms: TransformDefinition[];
+  selectedTransformDefinition: TransformDefinition;
+  transformCfg: {
+    transform: TransformName;
+    referenceMode: TRefMode;
+    referenceColumn?: string;
+    referenceValue?: string;
+  };
+  onTransformTypeChange: (transform: TransformName) => void;
+  onTransformReferenceModeChange: (mode: TRefMode) => void;
+  onTransformReferenceColumnChange: (column: string) => void;
+  onTransformReferenceValueChange: (value: string) => void;
   addTransformStep: () => void;
   transformColumns: string[];
   toggleTransformColumn: (column: string, checked: boolean) => void;
+  moveTransformColumn: (column: string, direction: "up" | "down") => void;
+  reorderTransformColumns: (dragColumn: string, targetColumn: string) => void;
   activeTransformSteps: TransformStepView[];
   draggingTransformId: string | null;
   setDraggingTransformId: Dispatch<SetStateAction<string | null>>;
@@ -248,11 +266,17 @@ export function DataSection({
   addFilter,
   removeFilter,
   transforms,
+  selectedTransformDefinition,
   transformCfg,
-  setTransformCfg,
+  onTransformTypeChange,
+  onTransformReferenceModeChange,
+  onTransformReferenceColumnChange,
+  onTransformReferenceValueChange,
   addTransformStep,
   transformColumns,
   toggleTransformColumn,
+  moveTransformColumn,
+  reorderTransformColumns,
   activeTransformSteps,
   draggingTransformId,
   setDraggingTransformId,
@@ -281,6 +305,9 @@ export function DataSection({
   >("filters");
   const [tablePage, setTablePage] = useState(1);
   const [tablePageSize, setTablePageSize] = useState(50);
+  const [draggingTransformColumn, setDraggingTransformColumn] = useState<
+    string | null
+  >(null);
 
   const columnOptions: IDropdownOption[] = activeColumns.map((c) => ({
     key: c,
@@ -291,9 +318,12 @@ export function DataSection({
     text: o.label,
   }));
   const transformOptions: IDropdownOption[] = transforms.map((t) => ({
-    key: t,
-    text: t,
+    key: t.name,
+    text: t.label,
   }));
+  const needsReference = selectedTransformDefinition.referenceNeed !== "none";
+  const isReferenceRequired =
+    selectedTransformDefinition.referenceNeed === "required";
 
   return (
     <section className="panel-grid">
@@ -398,58 +428,154 @@ export function DataSection({
           />
           {openSection === "transforms" ? (
             <>
-              <div className="inline-grid">
-                <Dropdown
-                  label="Transform"
-                  selectedKey={transformCfg.transform}
-                  options={transformOptions}
-                  onChange={(_, option) =>
-                    setTransformCfg((old) => ({
-                      ...old,
-                      transform: String(option?.key ?? "none") as TransformName,
-                    }))
-                  }
-                />
+              <div className="transform-builder-grid">
+                <div className="transform-step-card">
+                  <h3>1 · Choose transform</h3>
+                  <div className="inline-grid">
+                    <Dropdown
+                      label="Transform"
+                      selectedKey={transformCfg.transform}
+                      options={transformOptions}
+                      onChange={(_, option) =>
+                        onTransformTypeChange(
+                          String(option?.key ?? "none") as TransformName,
+                        )
+                      }
+                    />
 
-                <Dropdown
-                  label="Reference column"
-                  placeholder="Optional"
-                  selectedKey={transformCfg.referenceColumn || undefined}
-                  options={columnOptions}
-                  onChange={(_, option) =>
-                    setTransformCfg((old) => ({
-                      ...old,
-                      referenceColumn: String(option?.key ?? ""),
-                    }))
-                  }
-                />
+                    {needsReference ? (
+                      <ChoiceGroup
+                        label="Reference input"
+                        selectedKey={transformCfg.referenceMode}
+                        options={[
+                          { key: "column", text: "Reference column" },
+                          { key: "value", text: "Reference value" },
+                        ]}
+                        onChange={(_, option) =>
+                          onTransformReferenceModeChange(
+                            (option?.key as TRefMode) ?? "column",
+                          )
+                        }
+                      />
+                    ) : null}
 
-                <PrimaryButton
-                  text="Step"
-                  onClick={addTransformStep}
-                  iconProps={{ iconName: "Add" }}
-                />
+                    {needsReference &&
+                    transformCfg.referenceMode === "column" ? (
+                      <Dropdown
+                        label={
+                          isReferenceRequired
+                            ? "Reference column"
+                            : "Reference column (optional)"
+                        }
+                        placeholder={
+                          isReferenceRequired ? "Select" : "Optional"
+                        }
+                        selectedKey={transformCfg.referenceColumn || undefined}
+                        options={columnOptions}
+                        onChange={(_, option) =>
+                          onTransformReferenceColumnChange(
+                            String(option?.key ?? ""),
+                          )
+                        }
+                      />
+                    ) : null}
+
+                    {needsReference &&
+                    transformCfg.referenceMode === "value" ? (
+                      <TextField
+                        label={
+                          isReferenceRequired
+                            ? "Reference value"
+                            : "Reference value (optional)"
+                        }
+                        value={transformCfg.referenceValue ?? ""}
+                        onChange={(_, value) =>
+                          onTransformReferenceValueChange(value ?? "")
+                        }
+                      />
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="transform-step-card">
+                  <h3>2 · Pick columns</h3>
+                  <p className="panel-muted">
+                    Select columns and the order of application.
+                  </p>
+                  <div className="series-picker">
+                    {activeColumns.map((c) => (
+                      <label key={c} className="series-option">
+                        <Checkbox
+                          label={c}
+                          checked={transformColumns.includes(c)}
+                          onChange={(_, checked) =>
+                            toggleTransformColumn(c, Boolean(checked))
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="field-group">
-                <label>Transform columns</label>
-                <p className="panel-muted">
-                  {transformCfg.referenceColumn
-                    ? "If a reference column is specified, select that column last if transform is to be applied to it too."
-                    : "Select one or more columns to apply the transform steps to."}
-                </p>
-                <div className="series-picker">
-                  {activeColumns.map((c) => (
-                    <label key={c} className="series-option">
-                      <Checkbox
-                        label={c}
-                        checked={transformColumns.includes(c)}
-                        onChange={(_, checked) =>
-                          toggleTransformColumn(c, Boolean(checked))
-                        }
-                      />
-                    </label>
-                  ))}
+                <label>3 · Selected order (drag to reorder)</label>
+                {transformColumns.length === 0 ? (
+                  <div className="panel-muted">
+                    No transform columns selected yet.
+                  </div>
+                ) : (
+                  <div className="transform-list">
+                    {transformColumns.map((col, idx) => {
+                      const isRefColumn =
+                        transformCfg.referenceMode === "column" &&
+                        transformCfg.referenceColumn === col;
+                      return (
+                        <div
+                          key={`selected-${col}`}
+                          className="transform-item"
+                          draggable
+                          onDragStart={() => setDraggingTransformColumn(col)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            if (draggingTransformColumn) {
+                              reorderTransformColumns(
+                                draggingTransformColumn,
+                                col,
+                              );
+                            }
+                            setDraggingTransformColumn(null);
+                          }}
+                          onDragEnd={() => setDraggingTransformColumn(null)}
+                        >
+                          <div>
+                            <strong>{idx + 1}.</strong> {col}
+                            {isRefColumn ? " (reference)" : ""}
+                          </div>
+                          <div className="inline-actions">
+                            <DefaultButton
+                              text="↑"
+                              onClick={() => moveTransformColumn(col, "up")}
+                              disabled={idx === 0}
+                            />
+                            <DefaultButton
+                              text="↓"
+                              onClick={() => moveTransformColumn(col, "down")}
+                              disabled={idx === transformColumns.length - 1}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="inline-actions">
+                  <PrimaryButton
+                    text="4 · Add step"
+                    onClick={addTransformStep}
+                    iconProps={{ iconName: "Add" }}
+                  />
                 </div>
               </div>
 
@@ -477,12 +603,16 @@ export function DataSection({
                         <div>
                           <strong>{step.transform}</strong> on{" "}
                           {step.columns.join(", ")}
-                          {step.referenceColumn
-                            ? ` (ref: ${step.referenceColumn})`
+                          {step.referenceMode === "column" &&
+                          step.referenceColumn
+                            ? ` (ref column: ${step.referenceColumn})`
+                            : ""}
+                          {step.referenceMode === "value" && step.referenceValue
+                            ? ` (ref value: ${step.referenceValue})`
                             : ""}
                         </div>
                         <DefaultButton
-                          text="Delete"
+                          iconProps={{ iconName: "Delete" }}
                           onClick={() => removeTransformStep(step.id)}
                         />
                       </div>
