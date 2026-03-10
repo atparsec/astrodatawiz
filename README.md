@@ -5,7 +5,7 @@ A web-based interactive data exploration and visualization tool for astronomers,
 
 - Import large tables from `.csv`, `.xml`, `.vot`, `.b64`
 - Table viewer with per-column filters
-- Per-column transforms (`ln`, `log10`, `sqrt`, `inv`, `mag_to_int`, `int_to_mag`, etc.)
+- Per-column transforms (`ln`, `sqrt`, `inv`, `magnitude to intensity`, `intensity to magnitude`, etc.)
 - Excel-like function columns using expressions
 - SQL query workbench (in-browser, via AlaSQL)
 - Save SQL query outputs as reusable chart datasets
