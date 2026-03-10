@@ -84,9 +84,10 @@ export function ChartsSection({
         <div className="panel-head">
           <h2>Chart Builder</h2>
           <div className="inline-actions">
-            <PrimaryButton text="Add chart" onClick={addChart} />
+            <PrimaryButton text="Chart" onClick={addChart} iconProps={{iconName: "Add"}} />
             <DefaultButton
-              text="🧳 Export all charts (ZIP)"
+              text="Export all (ZIP)"
+              iconProps={{iconName: "Download" }}
               onClick={exportAllCharts}
               disabled={charts.length === 0}
             />
@@ -472,15 +473,22 @@ export function ChartsSection({
                 <span>{chart.title}</span>
                 <div className="inline-actions">
                   <DefaultButton
-                    text="Toggle Background"
+                    iconProps={{
+                      iconName: "Sunny"
+                    }}
                     onClick={() => toggleChartBackgroundMode(chart.id)}
                   />
                   <DefaultButton
-                    text="Export PNG"
+                    text="PNG"
+                    iconProps={{
+                      iconName: "Download"
+                    }}
                     onClick={() => exportChartImage(chart.id)}
                   />
                   <DefaultButton
-                    text="Remove"
+                    iconProps={{
+                      iconName: "Delete"
+                    }}
                     onClick={() => removeChart(chart.id)}
                   />
                 </div>
